@@ -22,6 +22,8 @@ android {
   compileSdk = androidApiLevel
 
   defaultConfig {
+    // Custom build: a distinct applicationId lets it be installed alongside the official app.
+    applicationId = "com.tailscale.ipn.custom"
     minSdk = 26
     targetSdk = androidApiLevel
 

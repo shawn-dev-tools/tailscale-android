@@ -7,7 +7,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,24 +26,25 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tailscale.ipn.App
 import com.tailscale.ipn.R
+import com.tailscale.ipn.ui.theme.searchBarColors
 import com.tailscale.ipn.ui.util.Lists
 import com.tailscale.ipn.ui.util.set
 import com.tailscale.ipn.ui.viewModel.SplitTunnelAppPickerViewModel
@@ -51,6 +55,8 @@ fun SplitTunnelAppPickerView(
     model: SplitTunnelAppPickerViewModel = viewModel(),
 ) {
   val installedApps by model.installedApps.collectAsState()
+  val visibleApps by model.visibleApps.collectAsState()
+  val searchQuery by model.searchQuery.collectAsState()
   val selectedPackageNames by model.selectedPackageNames.collectAsState()
   val allowSelected by model.allowSelected.collectAsState()
   val builtInDisallowedPackageNames: List<String> = App.get().builtInDisallowedPackageNames
@@ -120,6 +126,18 @@ fun SplitTunnelAppPickerView(
               }
           )
         }
+        item("search") {
+          OutlinedTextField(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+              value = searchQuery,
+              onValueChange = { model.searchQuery.set(it) },
+              singleLine = true,
+              shape = MaterialTheme.shapes.extraLarge,
+              colors = MaterialTheme.colorScheme.searchBarColors,
+              leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+              placeholder = { Text(stringResource(R.string.search_apps)) },
+          )
+        }
         item("resolversHeader") {
           Lists.SectionDivider(
               stringResource(
@@ -142,23 +160,29 @@ fun SplitTunnelAppPickerView(
             }
           }
         } else {
-          items(installedApps, key = { it.packageName }) { app ->
-            val icon =
-                remember(app.packageName, iconSizePx) {
-                  model.installedAppsManager.packageManager
-                      .getApplicationIcon(app.packageName)
-                      .toBitmap(width = iconSizePx, height = iconSizePx)
-                      .asImageBitmap()
+          items(visibleApps, key = { it.packageName }) { app ->
+            val icon by
+                produceState<ImageBitmap?>(
+                    model.cachedIcon(app.packageName),
+                    app.packageName,
+                    iconSizePx,
+                ) {
+                  value = model.loadIcon(app.packageName, iconSizePx)
                 }
 
             ListItem(
                 headlineContent = { Text(app.name, fontWeight = FontWeight.SemiBold) },
                 leadingContent = {
-                  Image(
-                      bitmap = icon,
-                      contentDescription = null,
-                      modifier = Modifier.size(iconSize),
-                  )
+                  val bitmap = icon
+                  if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        modifier = Modifier.size(iconSize),
+                    )
+                  } else {
+                    Spacer(modifier = Modifier.size(iconSize))
+                  }
                 },
                 supportingContent = {
                   Text(
@@ -194,6 +218,7 @@ fun SplitTunnelAppPickerView(
 fun FusMenu(viewModel: SplitTunnelAppPickerViewModel, onSwitchClick: (() -> Unit)) {
   val expanded by viewModel.showHeaderMenu.collectAsState()
   val allowSelected by viewModel.allowSelected.collectAsState()
+  val showSystemApps by viewModel.showSystemApps.collectAsState()
 
   DropdownMenu(
       expanded = expanded,
@@ -209,6 +234,16 @@ fun FusMenu(viewModel: SplitTunnelAppPickerViewModel, onSwitchClick: (() -> Unit
             stringResource(
                 if (allowSelected) R.string.switch_to_select_to_exclude
                 else R.string.switch_to_select_to_include
+            ),
+    )
+    MenuItem(
+        onClick = {
+          viewModel.showHeaderMenu.set(false)
+          viewModel.showSystemApps.set(!showSystemApps)
+        },
+        text =
+            stringResource(
+                if (showSystemApps) R.string.hide_system_apps else R.string.show_system_apps
             ),
     )
   }

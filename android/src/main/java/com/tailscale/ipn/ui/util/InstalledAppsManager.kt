@@ -8,7 +8,9 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import com.tailscale.ipn.BuildConfig
 
-data class InstalledApp(val name: String, val packageName: String)
+// isSystem marks preinstalled apps without a launcher entry (services, providers, etc.), which
+// users rarely want to route individually.
+data class InstalledApp(val name: String, val packageName: String, val isSystem: Boolean)
 
 class InstalledAppsManager(
     val packageManager: PackageManager,
@@ -21,6 +23,9 @@ class InstalledAppsManager(
           InstalledApp(
               name = it.loadLabel(packageManager).toString(),
               packageName = it.packageName,
+              isSystem =
+                  (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
+                      packageManager.getLaunchIntentForPackage(it.packageName) == null,
           )
         }
         .sortedBy { it.name }
