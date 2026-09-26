@@ -13,6 +13,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
 
@@ -41,12 +43,19 @@ jobs:
       - name: Build APKs
         run: make tailscale-debug.apk
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: tailscale-debug-apk
-          path: tailscale-debug.apk
-          if-no-files-found: error
+      # Publish to a release rather than an Actions artifact so the APK
+      # doesn't count against the Actions storage quota.
+      - name: Publish debug APK release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete debug-latest --yes --cleanup-tag || true
+          gh release create debug-latest tailscale-debug.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Debug build (${GITHUB_REF_NAME} @ ${GITHUB_SHA::7})" \
+            --notes "Debug APK built by Android CI run ${GITHUB_RUN_ID}."
 
       - name: Run tests
         run: make test
