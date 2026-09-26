@@ -5,8 +5,10 @@ on:
     branches:
       - main
       - "release-branch/*"
+      - split-tunnel-picker
   pull_request:
     # all PRs on all branches
+  workflow_dispatch:
 
 jobs:
   build:
@@ -38,6 +40,13 @@ jobs:
 
       - name: Build APKs
         run: make tailscale-debug.apk
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-debug-apk
+          path: tailscale-debug.apk
+          if-no-files-found: error
 
       - name: Run tests
         run: make test
