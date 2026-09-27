@@ -40,6 +40,18 @@ jobs:
       - name: Run Go tests
         run: make go-test
 
+      # Sign debug builds with a fixed key so each new APK installs over the
+      # previous one. Without the secret (e.g. fork PRs), Gradle generates a
+      # throwaway key as usual.
+      - name: Install fixed debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            mkdir -p ~/.android
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          fi
+
       - name: Build APKs
         run: make tailscale-debug.apk
 
