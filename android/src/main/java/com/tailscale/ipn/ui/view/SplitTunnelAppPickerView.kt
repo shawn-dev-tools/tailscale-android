@@ -3,6 +3,11 @@
 
 package com.tailscale.ipn.ui.view
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -31,20 +36,29 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tailscale.ipn.App
 import com.tailscale.ipn.R
 import com.tailscale.ipn.ui.theme.searchBarColors
+import com.tailscale.ipn.ui.util.InstalledAppsManager
 import com.tailscale.ipn.ui.util.Lists
 import com.tailscale.ipn.ui.util.set
 import com.tailscale.ipn.ui.viewModel.SplitTunnelAppPickerViewModel
@@ -64,8 +78,30 @@ fun SplitTunnelAppPickerView(
   val mdmExcludedPackages by model.mdmExcludedPackages.collectAsState()
   val showHeaderMenu by model.showHeaderMenu.collectAsState()
   val showSwitchDialog by model.showSwitchDialog.collectAsState()
+  val needsAppListPermission by model.needsAppListPermission.collectAsState()
   val iconSize = 40.dp
   val iconSizePx = with(LocalDensity.current) { iconSize.roundToPx() }
+  val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
+  val permissionLauncher =
+      rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        model.reloadIfAppListPermissionGranted()
+      }
+  var askedForAppListPermission by rememberSaveable { mutableStateOf(false) }
+
+  // Ask once automatically; the notice's buttons cover later attempts.
+  LaunchedEffect(needsAppListPermission) {
+    if (needsAppListPermission && !askedForAppListPermission) {
+      askedForAppListPermission = true
+      permissionLauncher.launch(InstalledAppsManager.GET_INSTALLED_APPS_PERMISSION)
+    }
+  }
+  // Pick up a permission granted from system settings when the user comes back.
+  LaunchedEffect(lifecycleOwner) {
+    lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      model.reloadIfAppListPermissionGranted()
+    }
+  }
 
   if (showSwitchDialog) {
     SwitchAlertDialog(
@@ -146,7 +182,46 @@ fun SplitTunnelAppPickerView(
               )
           )
         }
-        if (installedApps.isEmpty()) {
+        if (needsAppListPermission) {
+          item("appListPermission") {
+            ListItem(
+                headlineContent = {
+                  Text(stringResource(R.string.app_list_permission_needed))
+                },
+                supportingContent = {
+                  Row {
+                    TextButton(
+                        onClick = {
+                          permissionLauncher.launch(
+                              InstalledAppsManager.GET_INSTALLED_APPS_PERMISSION
+                          )
+                        }
+                    ) {
+                      Text(stringResource(R.string.grant_permission))
+                    }
+                    TextButton(
+                        onClick = {
+                          context.startActivity(
+                              Intent(
+                                  Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                  Uri.fromParts("package", context.packageName, null),
+                              )
+                          )
+                        }
+                    ) {
+                      Text(stringResource(R.string.open_app_settings))
+                    }
+                  }
+                },
+            )
+          }
+        }
+        if (installedApps?.isEmpty() == true && !needsAppListPermission) {
+          item("noApps") {
+            ListItem(headlineContent = { Text(stringResource(R.string.no_results)) })
+          }
+        }
+        if (installedApps == null) {
           item("spinner") {
             Box(
                 modifier = Modifier.fillMaxSize().padding(innerPadding),

@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -31,17 +30,9 @@ import kotlinx.coroutines.withContext
 class SplitTunnelAppPickerViewModel : ViewModel() {
   val installedAppsManager = InstalledAppsManager(packageManager = App.get().packageManager)
 
-  val installedApps: StateFlow<List<InstalledApp>> = flow {
-    val apps = installedAppsManager.fetchInstalledApps()
-    emit(apps)
-    initSelectedPackageNames(apps)
-  }
-      .flowOn(Dispatchers.IO)
-      .stateIn(
-          scope = viewModelScope,
-          started = SharingStarted.WhileSubscribed(5000),
-          initialValue = listOf(),
-      )
+  // null while the list is loading, so an empty result isn't mistaken for "still loading".
+  val installedApps: StateFlow<List<InstalledApp>?> = MutableStateFlow(null)
+  val needsAppListPermission: StateFlow<Boolean> = MutableStateFlow(false)
   val selectedPackageNames: StateFlow<List<String>> = MutableStateFlow(listOf())
 
   // Snapshot of the selection taken when the list loads, used to pin selected apps to the top.
@@ -60,6 +51,7 @@ class SplitTunnelAppPickerViewModel : ViewModel() {
           ) { apps, selected, pinned, query, showSystem ->
             val q = query.trim()
             apps
+                .orEmpty()
                 .filter { app ->
                   val visible =
                       showSystem ||
@@ -90,8 +82,36 @@ class SplitTunnelAppPickerViewModel : ViewModel() {
   val mdmIncludedPackages: StateFlow<SettingState<String?>> = MDMSettings.includedPackages.flow
 
   private var saveJob: Job? = null
+  private var loadJob: Job? = null
 
-  private fun initSelectedPackageNames(apps: List<InstalledApp> = installedApps.value) {
+  init {
+    loadInstalledApps()
+  }
+
+  private fun loadInstalledApps() {
+    loadJob?.cancel()
+    loadJob = viewModelScope.launch {
+      val (apps, needsPermission) =
+          withContext(Dispatchers.IO) {
+            installedAppsManager.fetchInstalledApps() to
+                installedAppsManager.needsAppListPermission(App.get())
+          }
+      needsAppListPermission.set(needsPermission)
+      installedApps.set(apps)
+      initSelectedPackageNames(apps)
+    }
+  }
+
+  // Called when the screen resumes or a permission request returns. Only reloads once the missing
+  // permission has been granted, so it never resets a selection the user is still editing.
+  fun reloadIfAppListPermissionGranted() {
+    if (needsAppListPermission.value && !installedAppsManager.needsAppListPermission(App.get())) {
+      installedApps.set(null)
+      loadInstalledApps()
+    }
+  }
+
+  private fun initSelectedPackageNames(apps: List<InstalledApp> = installedApps.value.orEmpty()) {
     allowSelected.set(App.get().allowSelectedPackages())
     selectedPackageNames.set(
         App.get()
