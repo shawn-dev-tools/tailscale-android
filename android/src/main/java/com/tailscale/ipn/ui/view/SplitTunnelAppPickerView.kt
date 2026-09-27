@@ -185,9 +185,7 @@ fun SplitTunnelAppPickerView(
         if (needsAppListPermission) {
           item("appListPermission") {
             ListItem(
-                headlineContent = {
-                  Text(stringResource(R.string.app_list_permission_needed))
-                },
+                headlineContent = { Text(stringResource(R.string.app_list_permission_needed)) },
                 supportingContent = {
                   Row {
                     TextButton(
