@@ -1,5 +1,14 @@
 # Tailscale Android Client
 
+> **Unofficial modified build.** This is a personal fork of
+> [tailscale/tailscale-android](https://github.com/tailscale/tailscale-android)
+> and is not affiliated with or endorsed by Tailscale Inc. Changes on the
+> `split-tunnel-picker` branch: faster app split tunneling picker (async icon
+> loading), search, selected-apps-first ordering, a hide-system-apps toggle,
+> and a separate applicationId (`com.tailscale.ipn.custom`) so it can be
+> installed alongside the official app. "Tailscale" is a trademark of
+> Tailscale Inc.
+
 https://tailscale.com
 
 Private WireGuard® networks made easy
